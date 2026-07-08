@@ -32,6 +32,10 @@ def parse_args():
         help="Directory to save generated videos"
     )
     parser.add_argument(
+        "--log_dir", type=str, default="./logs",
+        help="Directory to save log files"
+    )
+    parser.add_argument(
         "--num_samples", type=int, default=5,
         help="Number of videos to sample per prompt"
     )
@@ -74,11 +78,15 @@ def parse_args():
     return parser.parse_args()
 
 
-def _init_logging():
+def _init_logging(log_file=None):
+    handlers = [logging.StreamHandler(stream=sys.stdout)]
+    if log_file is not None:
+        os.makedirs(os.path.dirname(log_file) or '.', exist_ok=True)
+        handlers.append(logging.FileHandler(log_file))
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(levelname)s: %(message)s",
-        handlers=[logging.StreamHandler(stream=sys.stdout)],
+        handlers=handlers,
     )
 
 
@@ -103,7 +111,7 @@ def process(proc_ordinal, queue, gpu_id, args, tasks):
     from wan.textimage2video import WanTI2V
     from wan.utils.utils import save_video
 
-    _init_logging()
+    _init_logging(log_file=os.path.join(args.log_dir, f"worker_{proc_ordinal}.log"))
 
     cfg = WAN_CONFIGS[args.task]
     # fill in cfg defaults for unspecified knobs
@@ -145,6 +153,28 @@ def process(proc_ordinal, queue, gpu_id, args, tasks):
     skip_count = 0
     fail_count = 0
 
+    def _is_valid_video(path, expected_frames):
+        """Check if a video file exists and has the expected number of frames."""
+        if not os.path.isfile(path):
+            return False
+        if os.path.getsize(path) < 1024 * 100:  # < 100KB is likely corrupted
+            return False
+        try:
+            import av
+            container = av.open(path)
+            stream = container.streams.video[0]
+            frame_count = stream.frames
+            container.close()
+            if frame_count != expected_frames:
+                logging.info(
+                    f"[GPU {gpu_id}] skip (frame mismatch): {os.path.basename(path)} "
+                    f"expected={expected_frames} got={frame_count}"
+                )
+                return False
+        except Exception:
+            return False
+        return True
+
     # inference timing (exclude the first generated video as warmup)
     import time
     timed_total = 0.0   # seconds
@@ -154,9 +184,10 @@ def process(proc_ordinal, queue, gpu_id, args, tasks):
     for prompt, index, seed, save_file in tqdm.tqdm(
         tasks, desc=f"[GPU {gpu_id}] worker {proc_ordinal}"
     ):
-        # skip if already generated
-        if os.path.exists(save_file):
+        # skip if video already exists and is valid
+        if _is_valid_video(save_file, expected_frames=frame_num):
             skip_count += 1
+            logging.info(f"[GPU {gpu_id}] skip (exists): {os.path.basename(save_file)}")
             continue
 
         try:
