@@ -13,12 +13,11 @@ export PATH=${CUDA_DIR}/bin:${PATH}
 
 # activate anaconda environment
 #---------------------------------------------------------------------------
-# Usage: source set_env.sh <anaconda_path>
-# Example: source set_env.sh /mnt/SS4T/anaconda3
-ANACONDA_PATH="${1}"
-source "${ANACONDA_PATH}/bin/activate"
+source /mnt/SS4T/anaconda3/bin/activate
 conda activate wan
 
+# huggingface environment
+#--------------------------------------------------------------------------
 export HF_ENDPOINT=https://hf-mirror.com
 
 # HF Token: pass via environment variable (e.g. export HF_TOKEN=your_token)
