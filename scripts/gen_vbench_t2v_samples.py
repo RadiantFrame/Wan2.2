@@ -158,6 +158,7 @@ def process(proc_ordinal, queue, gpu_id, args, tasks):
         if not os.path.isfile(path):
             return False
         if os.path.getsize(path) < 1024 * 100:  # < 100KB is likely corrupted
+            logging.info(f"[GPU {gpu_id}] skip (empty): {os.path.basename(path)}")
             return False
         try:
             import av
@@ -171,7 +172,8 @@ def process(proc_ordinal, queue, gpu_id, args, tasks):
                     f"expected={expected_frames} got={frame_count}"
                 )
                 return False
-        except Exception:
+        except Exception as e:
+            logging.info(f"[GPU {gpu_id}] error occurred while checking video {os.path.basename(path)}: {e}")
             return False
         return True
 
